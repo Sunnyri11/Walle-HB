@@ -1,47 +1,68 @@
+# filename: predictor.py
 import joblib
 
-# Cargar la IA entrenada
-modelo_ia = joblib.load('mini_ia_hemoglobina.pkl')
+try:
+    # Cargamos el árbol de decisión básico
+    modelo_ia = joblib.load('mini_ia_hemoglobina.pkl')
+except FileNotFoundError:
+    print("Error: No se encontró 'mini_ia_hemoglobina.pkl'.")
 
-def generar_prediccion_y_recomendaciones(datos_paciente):
+# MATRIZ DE CONOCIMIENTO EVOLUTIVO: Bloques de texto que la IA aprenderá a combinar
+TEXTOS_EVOLUTIVOS = {
+    "mejora": "📈 ¡Excelente progreso! Walle-HB detecta que tus niveles están respondiendo favorablemente en comparación a tu histórico anterior. Tu esfuerzo en tu alimentación está dando resultados.",
+    "empeoramiento": "📉 Alerta de tendencia (Walle-HB): El sistema detecta un declive o un cambio adverso en comparación a tus registros previos. Es sumamente importante corregir hábitos antes de tu próxima evaluación.",
+    "estable_continuo": "🔄 Estabilidad sostenida: Walle-HB confirma que has logrado mantener tus niveles en equilibrio a lo largo del tiempo. Tu cuerpo se encuentra en un estado de homeostasis adecuado.",
+    "primer_analisis": "📊 Primer registro analizado por Walle-HB. A partir de tu siguiente control, la IA comenzará a trazar tu curva evolutiva personalizada."
+}
+
+RECOMENDACIONES_SALUD = {
+    'Anemia': [
+        "• Priorizar la ingesta de hierro hemínico (carnes magras, hígado) junto con jugos cítricos (Vitamina C) para acelerar la absorción.",
+        "• Monitorear síntomas de fatiga, palidez o debilidad muscular durante tus actividades diarias en altitud."
+    ],
+    'Poliglobulia': [
+        "• Incrementar de forma inmediata el consumo de agua líquida a 2.5 litros diarios para disminuir la viscosidad de la sangre.",
+        "• Evitar totalmente los suplementos vitamínicos que contengan hierro o ácido fólico."
+    ],
+    'Estable': [
+        "• Mantener tu patrón alimenticio actual para conservar tu capacidad de transporte de oxígeno ideal.",
+        "• Continuar con actividad física moderada para aprovechar la excelente oxigenación actual de tus tejidos."
+    ]
+}
+
+def generar_prediccion_y_recomendaciones(datos_paciente, historial_valores=None):
     """
-    datos_paciente debe ser una lista con la estructura:
-    [id_genero, altitud, edad, valor_min, valor_max, valor_hemoglobina]
-    Ejemplo para Wilder en La Paz: [1, 3640.00, 29, 14.50, 18.50, 15.63]
+    datos_paciente: [id_genero, altitud, edad, valor_min, valor_max, valor_hemoglobina]
+    historial_valores: Lista opcional con los valores de hemoglobina anteriores del usuario, ej: [13.80, 15.17]
     """
-    # 1. La IA predice el estado
-    estado_predicho = modelo_ia.predict([datos_paciente])[0]
-    
-    # 2. Sistema de Alertas Dinámicas y Recomendaciones
-    alertas = []
-    recomendaciones = []
-    
-    if estado_predicho == 'Anemia':
-        alertas.append("⚠️ ALERTA: Niveles de hemoglobina por debajo del rango recomendado.")
-        recomendaciones.append("• Incorporar alimentos ricos en hierro (carnes magras, legumbres, espinacas).")
-        recommendaciones.append("• Consumir jugos cítricos (Vitamina C) junto a tus comidas para mejorar la absorción.")
-        recomendaciones.append("• Consultar a un médico para evaluar un perfil de hierro completo.")
-        
-    elif estado_predicho == 'Poliglobulia':
-        alertas.append("🚨 ALERTA CRÍTICA: Niveles elevados (Posible Poliglobulia por Altitud).")
-        recomendaciones.append("• Mantener una hidratación constante (mínimo 2 a 2.5 litros de agua al día).")
-        recomendaciones.append("• Evitar el tabaco y ambientes con toxinas que reduzcan el oxígeno en sangre.")
-        recomendaciones.append("• Programar una cita con un hematólogo para valorar una flebotomía preventiva.")
-        
-    else: # Estado Estable
-        alertas.append(f"✅ ESTADO: ESTABLE ({datos_paciente[5]} G/DL)")
-        recomendaciones.append("• Tus niveles se encuentran perfectamente adaptados a la altitud de tu ciudad.")
-        recomendaciones.append("• Continúa con tu dieta equilibrada y estilo de vida activo.")
-        recomendaciones.append("• Realiza un análisis clínico de control en 6 meses.")
-        
-    return estado_predicho, alertas, recomendaciones
+    id_genero, altitud, edad, valor_min, valor_max, valor_actual = datos_paciente
 
-# --- PRUEBA EN VIVO CON LOS DATOS DE WILDER ---
-datos_wilder = [1, 3640.0, 29, 14.5, 18.5, 15.63]
-estado, lista_alertas, lista_recom = generar_prediccion_y_recomendaciones(datos_wilder)
+    # 1. El modelo clasifica el estado matemático actual ('Anemia', 'Poliglobulia', 'Estable')
+    estado_predicho = modelo_ia.predict([[id_genero, altitud, edad, valor_min, valor_max, valor_actual]])[0]
+    
+    # 2. APRENDIZAJE DE TENDENCIA: La IA analiza el histórico para decidir qué redactar
+    mensaje_evolutivo = TEXTOS_EVOLUTIVOS["primer_analisis"]
+    
+    if historial_valores and len(historial_valores) > 0:
+        ultimo_valor_anterior = historial_valores[0] # El inmediato anterior
+        
+        # Lógica de aprendizaje clínico basado en la evolución del paciente
+        if estado_predicho == 'Estable' and ultimo_valor_anterior < valor_min:
+            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["mejora"] # Salió de la anemia
+        elif estado_predicho == 'Anemia' and ultimo_valor_anterior >= valor_min:
+            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["empeoramiento"] # Cayó en anemia
+        elif estado_predicho == 'Poliglobulia' and ultimo_valor_anterior <= valor_max:
+            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["empeoramiento"] # Subió a rango crítico
+        elif estado_predicho == 'Estable' and ultimo_valor_anterior > valor_max:
+            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["mejora"] # Bajó de la poliglobulia a estable
+        elif estado_predicho == 'Estable' and (valor_min <= ultimo_valor_anterior <= valor_max):
+            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["estable_continuo"] # Se mantiene sano
 
-print(f"Predicción de la IA: {estado}")
-print(f"Alertas en Pantalla: {lista_alertas}")
-print("Recomendaciones sugeridas:")
-for r in lista_recom:
-    print(r)
+    # 3. Ensamblaje modular y dinámico del reporte de salud
+    intro_diagnostico = f"Reporte de Walle-HB: Tu estado actual es clasificado como {estado_predicho} con {valor_actual} g/dL."
+    alerta_final = f"{intro_diagnostico}\n\n{mensaje_evolutivo}"
+    
+    # Extraemos las acciones médicas específicas para su salud actual
+    acciones_sugeridas = RECOMENDACIONES_SALUD.get(estado_predicho, RECOMENDACIONES_SALUD['Estable'])
+    
+    return estado_predicho, [alerta_final], acciones_sugeridas

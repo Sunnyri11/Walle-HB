@@ -1,28 +1,22 @@
 # filename: main.py
 from fastapi import FastAPI
 from pydantic import BaseModel
-# Importación corregida con el nombre real de la función
+from typing import List, Optional
 from predictor import generar_prediccion_y_recomendaciones 
 
-# 1. Crear la instancia de la aplicación FastAPI
-app = FastAPI(
-    title="API de Predicción de Hemoglobina",
-    description="API que predice Anemia, Poliglobulia o Estado Estable usando Machine Learning"
-)
+app = FastAPI(title="Walle-HB: IA Médica Evolutiva")
 
-# 2. Definir el modelo de datos de entrada usando Pydantic
 class DatosPaciente(BaseModel):
-    id_genero: int           # Ejemplo: 1 para masculino, 2 para femenino
-    altitud: float           # Ejemplo: 3640.00 (La Paz)
-    edad: int                # Ejemplo: 29
-    valor_min: float         # Ejemplo: 14.50
-    valor_max: float         # Ejemplo: 18.50
-    valor_hemoglobina: float # Ejemplo: 15.63
+    id_genero: int
+    altitud: float
+    edad: int
+    valor_min: float
+    valor_max: float
+    valor_hemoglobina: float
+    historial_anteriores: Optional[List[float]] = [] # 📈 ¡Nueva lista dinámica recibida desde C#!
 
-# 3. Crear la ruta POST para recibir los datos y devolver la predicción
 @app.post("/predecir")
 def predecir_salud(paciente: DatosPaciente):
-    # Convertimos el objeto de Pydantic en la lista ordenada que espera tu IA
     lista_datos = [
         paciente.id_genero,
         paciente.altitud,
@@ -32,12 +26,12 @@ def predecir_salud(paciente: DatosPaciente):
         paciente.valor_hemoglobina
     ]
     
-    # Llamamos a tu función de predictor.py
-    estado, alertas, recomendaciones = generar_prediccion_y_recomendaciones(lista_datos)
+    # Le pasamos los datos actuales y el histórico para que la IA decida el mensaje óptimo
+    estado, alertas, recomendaciones = generar_prediccion_y_recomendaciones(lista_datos, paciente.historial_anteriores)
     
-    # Retornamos la respuesta estructurada en formato JSON
     return {
-        "prediccion_ia": estado,
+        "estado": [str(estado)],
+        "prediccion_ia": str(estado),
         "alertas": alertas,
         "recomendaciones": recomendaciones
     }
