@@ -1,4 +1,5 @@
 import joblib
+import numpy as np
 
 try:
     # Cargamos el árbol de decisión básico
@@ -6,12 +7,28 @@ try:
 except FileNotFoundError:
     print("Error: No se encontró 'mini_ia_hemoglobina.pkl'.")
 
-# MATRIZ DE CONOCIMIENTO EVOLUTIVO: Bloques de texto que la IA aprenderá a combinar
-TEXTOS_EVOLUTIVOS = {
-    "mejora": "📈 ¡Excelente progreso! Walle-HB detecta que tus niveles están respondiendo favorablemente en comparación a tu histórico anterior. Tu esfuerzo en tu alimentación está dando resultados.",
-    "empeoramiento": "📉 Alerta de tendencia (Walle-HB): El sistema detecta un declive o un cambio adverso en comparación a tus registros previos. Es sumamente importante corregir hábitos antes de tu próxima evaluación.",
-    "estable_continuo": "🔄 Estabilidad sostenida: Walle-HB confirma que has logrado mantener tus niveles en equilibrio a lo largo del tiempo. Tu cuerpo se encuentra en un estado de homeostasis adecuado.",
-    "primer_analisis": "📊 Primer registro analizado por Walle-HB. A partir de tu siguiente control, la IA comenzará a trazar tu curva evolutiva personalizada."
+# 🧠 MATRIZ DE DIAGNÓSTICO PREDICTIVO PROACTIVO (Basado en la proyección de la tendencia)
+TEXTOS_PREDICTIVOS = {
+    "recaida_anemia": "⚠️ Proyección Crítica (Walle-HB): Aunque tu estado actual está en rango, la velocidad de caída de tus niveles proyecta un alto riesgo de recaer en Anemia en tu próximo control si no intervienes.",
+    "recaida_poliglobulia": "⚠️ Alerta de Alza Rápida (Walle-HB): Se detecta una curva empinada hacia el alza. El sistema proyecta una tendencia de riesgo hacia la Poliglobulia. Es urgente aumentar tu hidratación.",
+    "mejora_sostenida": "📈 Tendencia Favorable (Walle-HB): La curva analítica muestra una estabilización progresiva y ascendente hacia rangos óptimos. Tu cuerpo consolida una excelente adaptación de transporte de oxígeno.",
+    "homeostasis": "🔄 Homeostasis Predictiva: Walle-HB confirma que la variabilidad de tus datos históricos es mínima. Tu metabolismo mantiene un control idóneo y una estabilidad sostenida en el tiempo.",
+    "primer_analisis": "📊 Historial inicial en proceso. A partir de tu siguiente control clínico, el motor estadístico de Walle-HB comenzará a trazar proyecciones y tendencias personalizadas."
+}
+
+# Recomendaciones predictivas adicionales basadas en la tendencia calculada
+RECOMENDACIONES_TENDENCIA = {
+    "riesgo_caida": [
+        "• Modificar dieta proactivamente: Añadir legumbres y vegetales de hoja verde oscura para frenar la tendencia de descenso.",
+        "• Planificar un control de ferritina preventivo antes de la fecha estándar de tu próximo análisis."
+    ],
+    "riesgo_alza": [
+        "• Reducir drásticamente carnes rojas y alimentos muy ricos en hierro durante las siguientes 2 semanas.",
+        "• Incrementar la ingesta de agua a 3 litros diarios para diluir preventivamente la concentración de glóbulos rojos."
+    ],
+    "estable": [
+        "• Mantener el patrón actual de nutrición y los hábitos físicos que estabilizaron tu curva biológica."
+    ]
 }
 
 RECOMENDACIONES_SALUD = {
@@ -32,40 +49,62 @@ RECOMENDACIONES_SALUD = {
 def generar_prediccion_y_recomendaciones(datos_paciente, historial_valores=None):
     """
     datos_paciente: [id_genero, altitud, edad, valor_min, valor_max, valor_hemoglobina]
-    historial_valores: Lista dinámica recibida desde C# con todo el historial [actual, anterior, penúltimo...]
+    historial_valores: Lista dinámica desde C# ordenada [más_nuevo, ..., más_antiguo]
     """
     id_genero, altitud, edad, valor_min, valor_max, valor_actual = datos_paciente
-
-    # Aseguramos el redondeo limpio del valor actual enviado
     valor_actual = round(float(valor_actual), 2)
 
-    # 1. El modelo clasifica el estado matemático actual ('Anemia', 'Poliglobulia', 'Estable')
+    # 1. El modelo clasifica el estado matemático en este instante exacto
     estado_predicho = modelo_ia.predict([[id_genero, altitud, edad, valor_min, valor_max, valor_actual]])[0]
     
-    # 2. APRENDIZAJE DE TENDENCIA: Saltamos el valor actual [0] para evaluar el verdadero registro anterior [1]
-    mensaje_evolutivo = TEXTOS_EVOLUTIVOS["primer_analisis"]
+    # 2. MOTOR DE ANÁLISIS PREDICTIVO (Evaluación de la curva completa)
+    mensaje_evolutivo = TEXTOS_PREDICTIVOS["primer_analisis"]
+    lista_recomendaciones = RECOMENDACIONES_SALUD.get(estado_predicho, RECOMENDACIONES_SALUD['Estable']).copy()
     
-    if historial_valores and len(historial_valores) > 1:
-        # El elemento [0] es la medición actual (13.8). El elemento [1] es la verdadera medición anterior.
-        ultimo_valor_anterior = round(float(historial_valores[1]), 2)
+    # Necesitamos al menos 2 datos históricos reales para trazar una tendencia matemática
+    if historial_valores and len(historial_valores) >= 2:
+        # Invertimos el historial recibido para analizar la curva en orden cronológico correcto (pasado -> presente)
+        valores_cronologicos = [round(float(v), 2) for v in reversed(historial_valores)]
         
-        # Lógica de aprendizaje clínico basado en la evolución real del paciente
-        if estado_predicho == 'Estable' and ultimo_valor_anterior < valor_min:
-            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["mejora"] # Salió de la anemia
-        elif estado_predicho == 'Anemia' and ultimo_valor_anterior >= valor_min:
-            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["empeoramiento"] # Cayó en anemia
-        elif estado_predicho == 'Poliglobulia' and ultimo_valor_anterior <= valor_max:
-            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["empeoramiento"] # Subió a rango crítico
-        elif estado_predicho == 'Estable' and ultimo_valor_anterior > valor_max:
-            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["mejora"] # Bajó de la poliglobulia a estable
-        elif estado_predicho == 'Estable' and (valor_min <= ultimo_valor_anterior <= valor_max):
-            mensaje_evolutivo = TEXTOS_EVOLUTIVOS["estable_continuo"] # Se mantiene sano
+        # Calculamos la pendiente (slope) de la curva usando regresión lineal simple sobre los índices
+        indices = np.arange(len(valores_cronologicos))
+        pendiente = np.polyfit(indices, valores_cronologicos, 1)[0]
+        
+        promedio_historico = np.mean(valores_cronologicos)
+        variabilidad = np.std(valores_cronologicos) # Desviación estándar
+        
+        # 🧠 ESCENARIOS DE DIAGNÓSTICO PREDICTIVO AVANZADO
+        if estado_predicho == 'Estable':
+            # Escenario A: Está estable hoy, pero sus niveles vienen cayendo rápido en el historial
+            if pendiente < -0.4:
+                mensaje_evolutivo = TEXTOS_PREDICTIVOS["recaida_anemia"]
+                lista_recomendaciones.extend(RECOMENDACIONES_TENDENCIA["riesgo_caida"])
+            # Escenario B: Está estable hoy, pero la curva se dispara peligrosamente hacia arriba
+            elif pendiente > 0.4:
+                mensaje_evolutivo = TEXTOS_PREDICTIVOS["recaida_poliglobulia"]
+                lista_recomendaciones.extend(RECOMENDACIONES_TENDENCIA["riesgo_alza"])
+            # Escenario C: Si se mantiene plano dentro del rango saludable
+            else:
+                if variabilidad < 0.3:
+                    mensaje_evolutivo = TEXTOS_PREDICTIVOS["homeostasis"]
+                else:
+                    mensaje_evolutivo = TEXTOS_PREDICTIVOS["mejora_sostenida"]
+                lista_recomendaciones.extend(RECOMENDACIONES_TENDENCIA["estable"])
+                
+        elif estado_predicho == 'Anemia':
+            if pendiente > 0.2:
+                mensaje_evolutivo = "📈 Evolución Positiva: A pesar del rango actual de Anemia, el algoritmo detecta una recuperación sostenida de la curva en los últimos registros."
+            else:
+                mensaje_evolutivo = "📉 Alerta Estacionaria: La tendencia se mantiene estancada en niveles bajos. Se sugiere evaluar la adherencia al tratamiento."
+                
+        elif estado_predicho == 'Poliglobulia':
+            if pendiente < -0.2:
+                mensaje_evolutivo = "📉 Tendencia de Control: Los niveles están descendiendo paulatinamente hacia rangos seguros, mostrando efectividad en los hábitos de descompresión o hidratación."
+            else:
+                mensaje_evolutivo = "🔺 Curva Ascendente Crítica: La viscosidad sanguínea proyecta un aumento sostenido. Evitar esfuerzos extenuantes y consultar a tu médico."
 
-    # 3. Ensamblaje modular y dinámico usando el parámetro real 'valor_actual' recibido
+    # 3. Ensamblaje modular del Reporte Inteligente
     intro_diagnostico = f"Reporte de Walle-HB: Tu estado actual es clasificado como {estado_predicho} con {valor_actual} g/dL."
     alerta_final = f"{intro_diagnostico}\n\n{mensaje_evolutivo}"
     
-    # Extraemos las acciones médicas específicas para su salud actual
-    acciones_sugeridas = RECOMENDACIONES_SALUD.get(estado_predicho, RECOMENDACIONES_SALUD['Estable'])
-    
-    return estado_predicho, [alerta_final], acciones_sugeridas
+    return estado_predicho, [alerta_final], lista_recomendaciones
