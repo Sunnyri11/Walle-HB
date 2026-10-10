@@ -1,4 +1,3 @@
-# filename: predictor.py
 import joblib
 
 try:
@@ -33,20 +32,24 @@ RECOMENDACIONES_SALUD = {
 def generar_prediccion_y_recomendaciones(datos_paciente, historial_valores=None):
     """
     datos_paciente: [id_genero, altitud, edad, valor_min, valor_max, valor_hemoglobina]
-    historial_valores: Lista opcional con los valores de hemoglobina anteriores del usuario, ej: [13.80, 15.17]
+    historial_valores: Lista dinámica recibida desde C# con todo el historial [actual, anterior, penúltimo...]
     """
     id_genero, altitud, edad, valor_min, valor_max, valor_actual = datos_paciente
+
+    # Aseguramos el redondeo limpio del valor actual enviado
+    valor_actual = round(float(valor_actual), 2)
 
     # 1. El modelo clasifica el estado matemático actual ('Anemia', 'Poliglobulia', 'Estable')
     estado_predicho = modelo_ia.predict([[id_genero, altitud, edad, valor_min, valor_max, valor_actual]])[0]
     
-    # 2. APRENDIZAJE DE TENDENCIA: La IA analiza el histórico para decidir qué redactar
+    # 2. APRENDIZAJE DE TENDENCIA: Saltamos el valor actual [0] para evaluar el verdadero registro anterior [1]
     mensaje_evolutivo = TEXTOS_EVOLUTIVOS["primer_analisis"]
     
-    if historial_valores and len(historial_valores) > 0:
-        ultimo_valor_anterior = historial_valores[0] # El inmediato anterior
+    if historial_valores and len(historial_valores) > 1:
+        # El elemento [0] es la medición actual (13.8). El elemento [1] es la verdadera medición anterior.
+        ultimo_valor_anterior = round(float(historial_valores[1]), 2)
         
-        # Lógica de aprendizaje clínico basado en la evolución del paciente
+        # Lógica de aprendizaje clínico basado en la evolución real del paciente
         if estado_predicho == 'Estable' and ultimo_valor_anterior < valor_min:
             mensaje_evolutivo = TEXTOS_EVOLUTIVOS["mejora"] # Salió de la anemia
         elif estado_predicho == 'Anemia' and ultimo_valor_anterior >= valor_min:
@@ -58,7 +61,7 @@ def generar_prediccion_y_recomendaciones(datos_paciente, historial_valores=None)
         elif estado_predicho == 'Estable' and (valor_min <= ultimo_valor_anterior <= valor_max):
             mensaje_evolutivo = TEXTOS_EVOLUTIVOS["estable_continuo"] # Se mantiene sano
 
-    # 3. Ensamblaje modular y dinámico del reporte de salud
+    # 3. Ensamblaje modular y dinámico usando el parámetro real 'valor_actual' recibido
     intro_diagnostico = f"Reporte de Walle-HB: Tu estado actual es clasificado como {estado_predicho} con {valor_actual} g/dL."
     alerta_final = f"{intro_diagnostico}\n\n{mensaje_evolutivo}"
     
