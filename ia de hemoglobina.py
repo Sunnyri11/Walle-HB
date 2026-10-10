@@ -1,47 +1,175 @@
-# filename: ia de hemoglobina.py
+# filename: ia_de_hemoglobina.py
+
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
 import joblib
 
-# 1. Cargar tus datos reales extraídos de la Base de Datos
-df = pd.read_csv('nivel_hemoglobina.csv')
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import classification_report
 
-# DINÁMICO: Aseguramos que la columna 'estado_diagnostico' exista calculándola 
-# dinámicamente fila por fila para cualquier combinación de rangos y valores.
+# =====================================================
+# FUNCIÓN PARA GENERAR ETIQUETAS SI NO EXISTEN
+# =====================================================
+
 def calcular_etiqueta(row):
-    valor = row['valor_hemoglobina']
-    v_min = row['valor_min']
-    v_max = row['valor_max']
+
+    valor = row["valor_hemoglobina"]
+    v_min = row["valor_min"]
+    v_max = row["valor_max"]
+
     if valor < v_min:
-        return 'Anemia'
+        return "Anemia"
     elif valor > v_max:
-        return 'Poliglobulia'
+        return "Poliglobulia"
     else:
-        return 'Estable'
+        return "Estable"
 
-if 'estado_diagnostico' not in df.columns:
-    df['estado_diagnostico'] = df.apply(calcular_etiqueta, axis=1)
 
-# 2. Separar características (Variables de entrada del paciente) y etiquetas (Diagnóstico)
-X = df[['id_genero', 'altitud', 'edad', 'valor_min', 'valor_max', 'valor_hemoglobina']]
-y = df['estado_diagnostico']
+# =====================================================
+# CARGAR CSV REAL
+# =====================================================
 
-# 3. Dividir el conjunto de entrenamiento (80%) y prueba (20%)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+df_real = pd.read_csv("nivel_hemoglobina.csv")
 
-# 4. Configurar y entrenar el modelo (Árbol de Decisión)
-# Mantenemos un max_depth adecuado para evitar sobreajuste (overfitting)
-modelo_ia = DecisionTreeClassifier(max_depth=5, random_state=42)
+if "estado_diagnostico" not in df_real.columns:
+    df_real["estado_diagnostico"] = df_real.apply(
+        calcular_etiqueta,
+        axis=1
+    )
 
-# MODIFICACIÓN CLAVE: Usamos .values para entrenar con matrices numéricas puras.
-# Esto evitará que la IA exija nombres de columnas exactos en FastAPI al recibir JSONs.
-modelo_ia.fit(X_train.values, y_train)
+# =====================================================
+# CARGAR CSV SINTÉTICO
+# =====================================================
 
-# 5. Evaluar precisión usando también .values para consistencia
-precision = modelo_ia.score(X_test.values, y_test)
-print(f"¡Mini IA entrenada con éxito! Precisión del modelo: {precision * 100:.2f}%")
+df_sintetico = pd.read_csv("nivel_hemoglobina_train.csv")
 
-# 6. Guardar el archivo binario final que usará el predictor
-joblib.dump(modelo_ia, 'mini_ia_hemoglobina.pkl')
-print("Modelo guardado con éxito como 'mini_ia_hemoglobina.pkl'")
+if "estado_diagnostico" not in df_sintetico.columns:
+    df_sintetico["estado_diagnostico"] = df_sintetico.apply(
+        calcular_etiqueta,
+        axis=1
+    )
+
+# =====================================================
+# DAR MÁS PESO A LOS DATOS REALES
+# =====================================================
+
+df_real_ponderado = pd.concat(
+    [df_real] * 10,
+    ignore_index=True
+)
+
+# =====================================================
+# UNIR AMBOS DATASETS
+# =====================================================
+
+df = pd.concat(
+    [df_real_ponderado, df_sintetico],
+    ignore_index=True
+)
+
+print("\n=== DISTRIBUCIÓN DEL DATASET ===")
+print(df["estado_diagnostico"].value_counts())
+
+# =====================================================
+# VARIABLES DE ENTRADA
+# =====================================================
+
+X = df[
+    [
+        "id_genero",
+        "altitud",
+        "edad",
+        "valor_min",
+        "valor_max",
+        "valor_hemoglobina"
+    ]
+]
+
+y = df["estado_diagnostico"]
+
+# =====================================================
+# DIVISIÓN ENTRENAMIENTO / PRUEBA
+# =====================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+# =====================================================
+# MODELO
+# =====================================================
+
+modelo_ia = DecisionTreeClassifier(
+    max_depth=6,
+    random_state=42
+)
+
+modelo_ia.fit(
+    X_train.values,
+    y_train
+)
+
+# =====================================================
+# MÉTRICAS
+# =====================================================
+
+precision = modelo_ia.score(
+    X_test.values,
+    y_test
+)
+
+print("\n=== RESULTADOS ===")
+print(f"Precisión: {precision * 100:.2f}%")
+
+predicciones = modelo_ia.predict(
+    X_test.values
+)
+
+print("\n=== REPORTE ===")
+print(
+    classification_report(
+        y_test,
+        predicciones
+    )
+)
+
+# =====================================================
+# IMPORTANCIA DE VARIABLES
+# =====================================================
+
+columnas = [
+    "id_genero",
+    "altitud",
+    "edad",
+    "valor_min",
+    "valor_max",
+    "valor_hemoglobina"
+]
+
+print("\n=== IMPORTANCIA DE VARIABLES ===")
+
+for nombre, importancia in zip(
+    columnas,
+    modelo_ia.feature_importances_
+):
+    print(
+        f"{nombre}: {importancia:.4f}"
+    )
+
+# =====================================================
+# GUARDAR MODELO
+# =====================================================
+
+joblib.dump(
+    modelo_ia,
+    "mini_ia_hemoglobina.pkl"
+)
+
+print(
+    "\nModelo guardado como "
+    "'mini_ia_hemoglobina.pkl'"
+)
