@@ -1,73 +1,61 @@
-import csv
+# filename: generar_dataset.py
+"""
+Generador de datos sintéticos para el "arranque en frío" de Walle-HB.
+
+- Como script:    python generar_dataset.py   -> escribe nivel_hemoglobina_train.csv
+- Como librería:  from generar_dataset import generar_dataframe
+  (entrenamiento.py lo usa si el CSV no existe en Render).
+
+Los rangos valor_min / valor_max varían (como en los datos reales, donde dependen
+de la altitud y la edad) para que el modelo aprenda la REGLA "Hb frente a su rango"
+y no memorice un único rango fijo.
+"""
 import random
 
-with open("nivel_hemoglobina_train.csv", "w", newline="", encoding="utf-8") as archivo:
+import pandas as pd
 
-    writer = csv.writer(archivo)
+ALTITUDES = [400, 2558, 3640, 3735, 4060, 4150]
+COLUMNAS = [
+    "id_genero", "altitud", "edad",
+    "valor_min", "valor_max", "valor_hemoglobina", "estado_diagnostico",
+]
 
-    writer.writerow([
-        "id_genero",
-        "altitud",
-        "edad",
-        "valor_min",
-        "valor_max",
-        "valor_hemoglobina",
-        "estado_diagnostico"
-    ])
 
-    for _ in range(300):
+def generar_dataframe(n=600, semilla=None):
+    rng = random.Random(semilla)
+    filas = []
+    for _ in range(n):
+        genero = rng.choice([1, 2])
+        base_min, base_max = (14.0, 18.0) if genero == 1 else (12.0, 16.0)
 
-        genero = random.choice([1, 2])
+        # Ajuste por altitud / edad: desplaza el rango de referencia
+        ajuste = round(rng.uniform(0.0, 3.5), 1)
+        vmin = round(base_min + ajuste, 1)
+        vmax = round(base_max + ajuste + rng.choice([0.0, 0.5, 1.0]), 1)
 
-        if genero == 1:
-            vmin = 14.0
-            vmax = 18.0
-        else:
-            vmin = 13.0
-            vmax = 16.5
+        edad = rng.randint(1, 80)
+        altitud = rng.choice(ALTITUDES)
+        estado = rng.choice(["Anemia", "Estable", "Poliglobulia"])
 
-        edad = random.randint(18, 80)
-
-        altitud = random.choice([
-            400,
-            2558,
-            3640,
-            3735,
-            4060
-        ])
-
-        estado = random.choice([
-            "Anemia",
-            "Estable",
-            "Poliglobulia"
-        ])
-
+        # ~40% de los casos caen pegados a un límite del rango (±0.3 g/dL): es
+        # donde un modelo se equivoca más y donde más importa acertar.
+        cerca = rng.random() < 0.4
         if estado == "Anemia":
-            hb = round(
-                random.uniform(vmin - 5, vmin - 0.1),
-                2
-            )
-
+            hb = vmin - (rng.uniform(0.01, 0.3) if cerca else rng.uniform(0.1, 5))
         elif estado == "Poliglobulia":
-            hb = round(
-                random.uniform(vmax + 0.1, vmax + 5),
-                2
-            )
-
+            hb = vmax + (rng.uniform(0.01, 0.3) if cerca else rng.uniform(0.1, 5))
+        elif cerca:
+            hb = vmin + rng.uniform(0, 0.3) if rng.random() < 0.5 else vmax - rng.uniform(0, 0.3)
         else:
-            hb = round(
-                random.uniform(vmin, vmax),
-                2
-            )
+            hb = rng.uniform(vmin, vmax)
+        hb = round(hb, 2)
 
-        writer.writerow([
-            genero,
-            altitud,
-            edad,
-            vmin,
-            vmax,
-            hb,
-            estado
-        ])
+        filas.append([genero, altitud, edad, vmin, vmax, hb, estado])
 
-print("CSV generado correctamente.")
+    return pd.DataFrame(filas, columns=COLUMNAS)
+
+
+if __name__ == "__main__":
+    df = generar_dataframe(3000)
+    df.to_csv("nivel_hemoglobina_train.csv", index=False)
+    print(f"CSV generado correctamente ({len(df)} filas).")
